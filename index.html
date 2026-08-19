@@ -47,6 +47,10 @@ header h1{font-size:21px;font-weight:700;letter-spacing:.3px}
 .decision-table{width:100%;border-collapse:collapse;font-size:12px}
 .decision-table th{background:#f2f3f5;color:var(--ink);font-weight:600;text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
 .decision-table th.num,.decision-table td.num{text-align:right;font-variant-numeric:tabular-nums}
+.decision-table th[data-key]{cursor:pointer;user-select:none}
+.decision-table th[data-key]::after{content:'↕';opacity:.35;font-weight:400;font-size:11px;margin-left:5px}
+.decision-table th.asc::after{content:'↑';opacity:1}
+.decision-table th.desc::after{content:'↓';opacity:1}
 .decision-table td{padding:7px 10px;border-bottom:1px solid #f0f1f2;vertical-align:middle}
 .decision-table tbody tr{cursor:pointer}
 .decision-table tbody tr:hover{background:#f7f8fa}
@@ -147,12 +151,12 @@ header h1{font-size:21px;font-weight:700;letter-spacing:.3px}
       <table class="decision-table">
         <thead>
           <tr>
-            <th>达人</th>
-            <th>投放优化建议</th>
-            <th class="num">广告预期外溢成本</th>
-            <th class="num">站外归因活跃率</th>
-            <th class="num">站外活跃行为</th>
-            <th class="num">广告阅读量</th>
+            <th data-key="name">达人</th>
+            <th data-key="state">投放优化建议</th>
+            <th class="num" data-key="cost">广告预期外溢成本</th>
+            <th class="num" data-key="act">站外归因活跃率</th>
+            <th class="num" data-key="actn">站外活跃行为</th>
+            <th class="num" data-key="adreads">广告阅读量</th>
           </tr>
         </thead>
         <tbody id="decisionList"></tbody>
@@ -247,22 +251,64 @@ function advice(d){
 }
 
 const STATE_ORDER = ['放量','续测/维持','继续观察','暂停优化'];
-function buildList(){
-  const sorted = [...RAW].sort((a,b) => {
-    const oa = STATE_ORDER.indexOf(a.state), ob = STATE_ORDER.indexOf(b.state);
-    if (oa !== ob) return oa - ob;
-    return b.adreads - a.adreads;
-  });
-  const html = sorted.map(d => `<tr data-name="${d.name}">
+const SORT_DEFAULT_DIR = { name:'asc', state:'asc', cost:'desc', act:'desc', actn:'desc', adreads:'desc' };
+let sortKey = null, sortDir = 1;
+
+function sortVal(d, key){
+  switch(key){
+    case 'name':   return d.name;
+    case 'state':  return STATE_ORDER.indexOf(d.state);
+    case 'cost':   return d.value[0];
+    case 'act':    return d.value[1];
+    case 'actn':   return d.value[2];
+    default:       return d.adreads;
+  }
+}
+function rowHtml(d){
+  return `<tr data-name="${d.name}">
       <td class="name">${d.name}</td>
       <td><span class="badge" style="background:${STATE_COLOR[d.state]}">${d.state}</span></td>
       <td class="num">${d.value[0].toFixed(1)}</td>
       <td class="num">${d.value[1].toFixed(1)}%</td>
       <td class="num">${Math.round(d.value[2])}</td>
       <td class="num">${d.adreads.toLocaleString('zh-CN')}</td>
-    </tr>`).join('');
-  $('decisionList').innerHTML = html;
+    </tr>`;
 }
+function renderRows(rows){
+  $('decisionList').innerHTML = rows.map(rowHtml).join('');
+}
+function sortRows(){
+  const rows = [...RAW];
+  if (sortKey) {
+    rows.sort((a,b) => {
+      const va = sortVal(a, sortKey), vb = sortVal(b, sortKey);
+      if (va !== vb) return (typeof va === 'string' ? va.localeCompare(vb, 'zh-CN') : va - vb) * sortDir;
+      return b.adreads - a.adreads;
+    });
+  } else {
+    rows.sort((a,b) => {
+      const oa = STATE_ORDER.indexOf(a.state), ob = STATE_ORDER.indexOf(b.state);
+      if (oa !== ob) return oa - ob;
+      return b.adreads - a.adreads;
+    });
+  }
+  renderRows(rows);
+}
+function updateSortIndicators(){
+  document.querySelectorAll('.decision-table th[data-key]').forEach(th => {
+    th.classList.toggle('asc', th.dataset.key === sortKey && sortDir === 1);
+    th.classList.toggle('desc', th.dataset.key === sortKey && sortDir === -1);
+  });
+}
+document.querySelectorAll('.decision-table th[data-key]').forEach(th => {
+  th.addEventListener('click', () => {
+    const key = th.dataset.key;
+    if (sortKey === key) { sortDir = -sortDir; }
+    else { sortKey = key; sortDir = SORT_DEFAULT_DIR[key] === 'asc' ? 1 : -1; }
+    updateSortIndicators();
+    sortRows();
+  });
+});
 
 function openDetail(d){
   const spend = d.d30 == null
@@ -439,7 +485,7 @@ document.querySelectorAll('.qb').forEach(el=>{
 });
 chart.on('click', function(p){ if(p.data && p.data.name) openDetail(p.data); });
 
-buildList();
+sortRows();
 setMode('box');
 window.addEventListener('resize', ()=>chart.resize());
 </script>
