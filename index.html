@@ -28,7 +28,7 @@ h1{font-size:20px;font-weight:600}
 <body>
 <div class="wrap">
 <h1>投流笔记气泡图分析</h1>
-<div class="sub">数据源：博主数据清洗底表　·　横轴 = 广告预期外溢成本（对数）　·　纵轴 = 站外归因活跃率　·　气泡大小 = 站外活跃行为　·　颜色 = 决策状态</div>
+<div class="sub">数据源：博主数据清洗底表　·　横轴 = 广告预期外溢成本（对数，越低越好）　·　纵轴 = 站外归因活跃率（越高越好）　·　气泡大小 = 站外活跃行为　·　颜色 = 决策状态　·　四象限 = 放量线 10 × 活跃线 5%</div>
 <div class="toolbar">
 <button id="modeBox" class="active">框选放大</button>
 <button id="modeMove">拖拽移动</button>
@@ -48,7 +48,8 @@ h1{font-size:20px;font-weight:600}
 <div class="legend-note">
 <span class="tag">读图</span>
 <b>框选放大</b>：在图上拖动框出区域，松手即放大到该范围；<b>拖拽移动</b>：切换到该模式后按住拖动可平移视图。<br/>
-<b>右下角</b>：外溢成本低、活跃率高 → 性价比优；<b>左上角</b>：外溢成本高、活跃率低 → 烧钱弱效。气泡越大 = 站外活跃行为越多。
+<b>四象限</b>（由 放量线 10 与 活跃线 5% 划分）：<b>优质放量区</b>（左上，绿底）= 成本&lt;10 且活跃率≥5%，效率与内容双优，优先放量；<b>成本优势区</b>（左下，绿底）= 成本&lt;10 但活跃率&lt;5%，效率达标、活跃一般，结合气泡大小（外溢规模）与广告阅读量决定放量或维持；<b>潜力优化区</b>（右上，橙底）= 成本≥10 但活跃率≥5%，内容有吸引力、成本未达标，优化定向/内容后复测；<b>谨慎暂停区</b>（右下，红底）= 成本≥10 且活跃率&lt;5%，效率与活跃双弱，暂停加预算、优先优化内容。<br/>
+<b>三根参考线</b>：放量线 10 与暂停线 15 把成本分成放量 / 续测 / 暂停三档；活跃线 5% 标记高互动分界。气泡越大 = 站外活跃行为越多（外溢规模越大）。
 </div>
 </div>
 <script>
@@ -142,12 +143,44 @@ chart.setOption({
         { xAxis: 10, lineStyle: { color: '#2e9e5b' },
           label: { formatter: '放量线 10', color: '#2e9e5b', position: 'insideEndTop' } },
         { xAxis: 15, lineStyle: { color: '#d9534f' },
-          label: { formatter: '暂停线 15', color: '#d9534f', position: 'insideEndTop' } }
+          label: { formatter: '暂停线 15', color: '#d9534f', position: 'insideEndTop' } },
+        { yAxis: 5, lineStyle: { color: '#8f959e' },
+          label: { formatter: '活跃线 5%', color: '#8f959e', position: 'insideEndTop' } }
+      ] },
+    markArea: { silent: true, itemStyle: { opacity: 0.08 },
+      label: { show: true, fontSize: 12, fontWeight: 700,
+               backgroundColor: 'rgba(255,255,255,0.86)', borderRadius: 4, padding: [2, 6] },
+      data: [
+        [{ name: '优质放量区', xAxis: 1, yAxis: 5,
+           itemStyle: { color: '#2e9e5b' }, label: { formatter: '优质放量区', color: '#1e6b3e' } },
+         { xAxis: 10, yAxis: 33 }],
+        [{ name: '成本优势区', xAxis: 1, yAxis: 0,
+           itemStyle: { color: '#2e9e5b' }, label: { formatter: '成本优势区', color: '#1e6b3e' } },
+         { xAxis: 10, yAxis: 5 }],
+        [{ name: '潜力优化区', xAxis: 10, yAxis: 5,
+           itemStyle: { color: '#e8a13d' }, label: { formatter: '潜力优化区', color: '#a4661c' } },
+         { xAxis: 600, yAxis: 33 }],
+        [{ name: '谨慎暂停区', xAxis: 10, yAxis: 0,
+           itemStyle: { color: '#d9534f' }, label: { formatter: '谨慎暂停区', color: '#a8322e' } },
+         { xAxis: 600, yAxis: 5 }]
       ] }
   }]
 });
 
+// 视图边界：x 轴为对数刻度，min 必须 > 0，否则轴失效，导致拖拽/缩放卡死
+const LIMIT = { xMin: 0.5, xMax: 3000, yMin: 0, yMax: 60 };
+function isNum(v){ return typeof v === 'number' && isFinite(v); }
+function clampView(nx, ny){
+  let offX = 0, offY = 0;
+  if (nx[0] < LIMIT.xMin) offX = LIMIT.xMin - nx[0];
+  else if (nx[1] > LIMIT.xMax) offX = LIMIT.xMax - nx[1];
+  if (ny[0] < LIMIT.yMin) offY = LIMIT.yMin - ny[0];
+  else if (ny[1] > LIMIT.yMax) offY = LIMIT.yMax - ny[1];
+  return [[nx[0]+offX, nx[1]+offX], [ny[0]+offY, ny[1]+offY]];
+}
+
 function applyZoom(){
+  if (!(xr[1] > xr[0]) || !(yr[1] > yr[0])) { xr = [...baseX]; yr = [...baseY]; }
   chart.setOption({ xAxis: { min: xr[0], max: xr[1] }, yAxis: { min: yr[0], max: yr[1] } });
   const scale = (baseX[1]-baseX[0]) / (xr[1]-xr[0]);
   document.getElementById('zoomLabel').textContent = '缩放 ' + Math.round(scale*100) + '%';
@@ -166,7 +199,8 @@ chart.on('brushEnd', function(params){
   const nx = [Math.min(cr[0][0], cr[0][1]), Math.max(cr[0][0], cr[0][1])];
   const ny = [Math.min(cr[1][0], cr[1][1]), Math.max(cr[1][0], cr[1][1])];
   if (nx[1]-nx[0] < (baseX[1]-baseX[0])*0.01) return;
-  xr = nx; yr = ny;
+  const clamped = clampView(nx, ny);
+  xr = clamped[0]; yr = clamped[1];
   applyZoom();
   chart.dispatchAction({ type: 'brush', areas: [] });
 });
@@ -174,17 +208,25 @@ chart.on('brushEnd', function(params){
 // 拖拽移动（仅拖拽模式）
 let dragging = false, grab = null;
 function enablePan(on){ document.getElementById('chart').style.cursor = on ? 'grab' : 'default'; }
+let mode = 'box';
 chart.getZr().on('mousedown', function(e){
   if (mode !== 'move') return;
+  const vx = chart.convertFromPixel({xAxisIndex:0}, e.zrX);
+  const vy = chart.convertFromPixel({yAxisIndex:0}, e.zrY);
+  if (!isNum(vx) || !isNum(vy)) return;
   dragging = true; document.getElementById('chart').style.cursor = 'grabbing';
-  grab = { vx: chart.convertFromPixel({xAxisIndex:0}, e.zrX), vy: chart.convertFromPixel({yAxisIndex:0}, e.zrY), xr: [...xr], yr: [...yr] };
+  grab = { vx: vx, vy: vy, xr: [...xr], yr: [...yr] };
 });
 chart.getZr().on('mousemove', function(e){
   if (!dragging || mode !== 'move') return;
   const curVx = chart.convertFromPixel({xAxisIndex:0}, e.zrX);
   const curVy = chart.convertFromPixel({yAxisIndex:0}, e.zrY);
-  xr = [grab.xr[0]+grab.vx-curVx, grab.xr[1]+grab.vx-curVx];
-  yr = [grab.yr[0]+grab.vy-curVy, grab.yr[1]+grab.vy-curVy];
+  if (!isNum(curVx) || !isNum(curVy)) return;
+  const clamped = clampView(
+    [grab.xr[0]+grab.vx-curVx, grab.xr[1]+grab.vx-curVx],
+    [grab.yr[0]+grab.vy-curVy, grab.yr[1]+grab.vy-curVy]
+  );
+  xr = clamped[0]; yr = clamped[1];
   applyZoom();
 });
 chart.getZr().on('mouseup', function(){
@@ -194,7 +236,6 @@ chart.getZr().on('mouseup', function(){
 });
 
 // 模式切换
-let mode = 'box';
 function setMode(m){
   mode = m;
   document.getElementById('modeBox').classList.toggle('active', m === 'box');
@@ -210,7 +251,8 @@ const Z_IN = 0.77, Z_OUT = 1.3;
 function zoomBy(f){
   const cx = (xr[0]+xr[1])/2, w = (xr[1]-xr[0])*f/2;
   const cy = (yr[0]+yr[1])/2, h = (yr[1]-yr[0])*f/2;
-  xr = [cx-w, cx+w]; yr = [cy-h, cy+h];
+  const clamped = clampView([cx-w, cx+w], [cy-h, cy+h]);
+  xr = clamped[0]; yr = clamped[1];
   applyZoom();
 }
 document.getElementById('zoomIn').onclick = () => zoomBy(Z_IN);
