@@ -170,6 +170,8 @@ chart.setOption({
 // 视图边界：x 轴为对数刻度，min 必须 > 0，否则轴失效，导致拖拽/缩放卡死
 const LIMIT = { xMin: 0.5, xMax: 3000, yMin: 0, yMax: 60 };
 function isNum(v){ return typeof v === 'number' && isFinite(v); }
+function evX(e){ return isNum(e.zrX) ? e.zrX : e.offsetX; }
+function evY(e){ return isNum(e.zrY) ? e.zrY : e.offsetY; }
 function clampView(nx, ny){
   let offX = 0, offY = 0;
   if (nx[0] < LIMIT.xMin) offX = LIMIT.xMin - nx[0];
@@ -209,22 +211,30 @@ chart.on('brushEnd', function(params){
 let dragging = false, grab = null;
 function enablePan(on){ document.getElementById('chart').style.cursor = on ? 'grab' : 'default'; }
 let mode = 'box';
+const GRID_PAD = { left: 66, right: 30, top: 30, bottom: 56 };
 chart.getZr().on('mousedown', function(e){
   if (mode !== 'move') return;
-  const vx = chart.convertFromPixel({xAxisIndex:0}, e.zrX);
-  const vy = chart.convertFromPixel({yAxisIndex:0}, e.zrY);
-  if (!isNum(vx) || !isNum(vy)) return;
+  const px = evX(e), py = evY(e);
+  if (!isNum(px) || !isNum(py)) return;
   dragging = true; document.getElementById('chart').style.cursor = 'grabbing';
-  grab = { vx: vx, vy: vy, xr: [...xr], yr: [...yr] };
+  grab = {
+    x: px, y: py, xr: [...xr], yr: [...yr],
+    gw: chart.getWidth() - GRID_PAD.left - GRID_PAD.right,
+    gh: chart.getHeight() - GRID_PAD.top - GRID_PAD.bottom
+  };
 });
 chart.getZr().on('mousemove', function(e){
   if (!dragging || mode !== 'move') return;
-  const curVx = chart.convertFromPixel({xAxisIndex:0}, e.zrX);
-  const curVy = chart.convertFromPixel({yAxisIndex:0}, e.zrY);
-  if (!isNum(curVx) || !isNum(curVy)) return;
+  const px = evX(e), py = evY(e);
+  if (!isNum(px) || !isNum(py)) return;
+  if (!(grab.gw > 0) || !(grab.gh > 0)) return;
+  const dx = px - grab.x, dy = py - grab.y;
+  const lg0 = Math.log(grab.xr[0]), lg1 = Math.log(grab.xr[1]);
+  const shX = dx / grab.gw * (lg1 - lg0);
+  const shY = dy / grab.gh * (grab.yr[1] - grab.yr[0]);
   const clamped = clampView(
-    [grab.xr[0]+grab.vx-curVx, grab.xr[1]+grab.vx-curVx],
-    [grab.yr[0]+grab.vy-curVy, grab.yr[1]+grab.vy-curVy]
+    [Math.exp(lg0 - shX), Math.exp(lg1 - shX)],
+    [grab.yr[0] + shY, grab.yr[1] + shY]
   );
   xr = clamped[0]; yr = clamped[1];
   applyZoom();
